@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # LLM Decoding Strategies: A Deep Dive
 
 This repository contains a progressive series of Jupyter notebooks designed to demystify exactly how Large Language Models (LLMs) choose their next words. Rather than treating an LLM like a black box by blindly calling `model.generate()`, these notebooks unpack the mathematical mechanics of generation layer by layer.
@@ -171,3 +172,6 @@ $$
 
 ---
 *Created as part of an LLM experimentation lab setup to understand mechanistic interpretability and text generation pipelines.*
+=======
+# llm-decoding-strategies
+>>>>>>> 1ad6b47 (Create README.md)
