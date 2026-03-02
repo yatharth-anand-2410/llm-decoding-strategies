@@ -1,9 +1,8 @@
-<<<<<<< HEAD
 # LLM Decoding Strategies: A Deep Dive
 
 This repository contains a progressive series of Jupyter notebooks designed to demystify exactly how Large Language Models (LLMs) choose their next words. Rather than treating an LLM like a black box by blindly calling `model.generate()`, these notebooks unpack the mathematical mechanics of generation layer by layer.
 
-Using `Qwen/Qwen2.5-0.5B` via HuggingFace on Apple Silicon (`mps`), these notebooks allow you to safely manipulate raw logits, apply Softmax, and watch different decoding strategies break in real-time.
+Using `Qwen/Qwen2.5-0.5B` via HuggingFace and `Meta-Llama-3-8B` via Apple MLX, these notebooks allow you to safely manipulate raw logits, apply Softmax, and watch different decoding strategies break in real-time.
 
 ---
 
@@ -110,11 +109,6 @@ $$ \text{Score} = \frac{\log P(Y)}{len(Y)^\alpha} $$
 - **Top-P vs Beam:** Beam Search strongly prefers safe, deterministic, "average" text. This makes it the undisputed industry standard for Translation and Summarization. Top-P allows for stochastic variance, making it superior for Creative Writing.
 
 **Experiments Logs:**
-- **Experiment:** Execution Time vs Beam Width on prompt `"The key to making a great pizza is"`.
-  - *Beam Width = 1 (Greedy):* Output: `"The key to making a great pizza is the right dough. The dough is the base of the pizza, and it"` -> Time Taken: 7.12s.
-  - *Beam Width = 5:* Output: `"The key to making a great pizza is using the right ingredients and techniques. Here are some tips to help you create"` -> Time Taken: 6.27s. (Execution time fluctuates but branching compute cost is evident).
-- **Experiment:** Adjusting Length Penalty in Beam Search (`0.6` Favors Short vs `1.5` Favors Long).
-  - Both length penalties surprisingly generated: `"...the right proportions, and the right way to cook it. Here are"`. This indicates that the probability log-scores overrule the length penalty multiplier for this specific state space.
 - **Experiment:** Task Alignment (Translation vs Creative).
   - *Translation (Beam=5):* Prompt `"Translate English to French: Hello World ->"` produced highly accurate `"Bonjour le monde"`.
   - *Creative (Beam=5):* Prompt `"Write a short poem about a robot:"` produced a boring, deterministic opening: `"Title: The Unseen Companion\n\nIn the vast expanse of space,"`. This confirmed Beam Search is optimal for deterministic pathways but stifling for creativity.
@@ -157,21 +151,41 @@ $$
 - This is the absolute foundation of building reliable LLM Agents that need to call external databases or output structured arrays reliably.
 
 **Experiments Logs:**
-- **Experiment:** Forcing a 10-Digit Phone Number.
-  - *Prompt:* `"Write a beautiful, emotional poem about the moon and stars:\n"`
-  - *Constraint Mechanism:* A mask of `-Infinity` was created, and only the specific Logit indices belonging to digits `0-9` were copied over.
-  - *Result:* Output: `"1234567890"`. Logit manipulation perfectly overrode the semantic attention of the "poem" prompt.
-- **Experiment:** Strict JSON Array Generation.
-  - *Prompt:* `"The user data formatted as a JSON array:\n"`
-  - *Constraint Mechanism:* A State Machine passed lists of allowed token indices per loop: `[`, then `digits`, then `,`, then `digits`, then `]`.
-  - *Result:* Output: `"[1,2,3]"`.
-- **Experiment:** Using HuggingFace LogitsProcessors.
-  - *Prompt:* `"The secret meaning of life is"`
-  - *Constraint Mechanism:* A custom `LogitsProcessor` intercepted `model.generate()`, scanning the entire vocabulary to identify any token containing the string `'e'` or `'E'`, and permanently setting its score to `-Infinity`. 
-  - *Result:* Output: `"to find a way to ________ your own worth.\nA. show\nB. show off\n"`. The model creatively constructed a sentence without using the letter 'e', falling into a test-question format to legally satisfy the constraint.
+- **Experiment:** The No-"e" Lipogram.
+  - *Constraint:* Set all tokens containing "e" to $-\infty$.
+  - *Result:* Model creatively bypassed the letter "e" by switching to a test-question format to legally satisfy the constraint.
+
+---
+
+### 9. [09_decoding_vs_weight_surgery_mlx.ipynb](09_decoding_vs_weight_surgery_mlx.ipynb)
+**Theory:**
+Can we use **Inference Engineering** to rescue a model from **Mechanistic Failure**? By perturbing the 4-bit quantized weights of the Llama 3 `lm_head`, we intentionally corrupt the model's vocabulary mapping and test if decoding strategies can filter the noise.
+
+#### **Redemption Sweep Results (Prompt: "What is 2+2?")**
+
+| Weight Shift | [Greedy] | [Top-K=40] | [Top-P=0.9] | [Contrastive Search] |
+| :--- | :--- | :--- | :--- | :--- |
+| **1,000,000** | Healthy (4) | Healthy (4) | !!#E!9I... (Garbage) | Healthy (4) + Chat noise |
+| **1,000,001** | Healthy (4) | Healthy (4) | !!!!!$10... (Garbage) | Healthy (4) |
+| **1,000,003** | **Looping** (nothing...) | Healthy (4) + and... | !!I!IeE... (Garbage) | **Rescue** (4 + logical expansion) |
+| **1,000,005** | **Dead** (fo.Apis—) | Dead (fodealloc) | $&@i... (Garbage) | **Dead** (fo.Apis—) |
+| **1,000,010** | **Dead** (eskort uranus) | **Dead** (eskort uranus) | #*3*#I... (Garbage) | **Dead** (eskort uranus) |
+
+#### **Mechanistic Analysis & Conclusion**
+
+1.  **The Biological Breaking Point (1,000,005):**
+    The model's tolerance is non-linear. At a shift of `1,000,005`, "bit-level borrow propagation" occurs in the packed `uint32` weights. This flips the **Most Significant Bits** of the weights, causing previously "silent" tokens (like `fo.Apis` or `eskort`) to suddenly dominate the probability distribution, sucking all logic into "Gravitational Wells."
+
+2.  **Top-K (The Noise Filter):**
+    The most robust strategy. Because 4-bit corruption creates a "long tail" of millions of slightly probable bad tokens, Top-K effectively ignores this noise by strictly limiting the lottery pool. Even when the weights were "wobbly," the correct answer remained in the Top 40.
+
+3.  **Top-P (The Garbage Magnet):**
+    Failed spectacularly. As weight corruption made thousands of garbage tokens "slightly more likely," the Nucleus pool exploded, and the model sampled from a pool of "equally probable garbage."
+
+4.  **Contrastive Search (The Hidden State Shield):**
+    At the critical wobble point (`1,000,003`), Contrastive Search navigated the corruption better than Greedy. Since the **Hidden States** (internal brain) were not corrupted, Contrastive Search used them to penalize the redundancy and noise being suggested by the **lm_head** (the broken voice).
+
+**Conclusion:** Inference Engineering can "rescue" a model with physical brain damage, but only until the bit-corruption flips the high-order bits of the weight distribution.
 
 ---
 *Created as part of an LLM experimentation lab setup to understand mechanistic interpretability and text generation pipelines.*
-=======
-# llm-decoding-strategies
->>>>>>> 1ad6b47 (Create README.md)
