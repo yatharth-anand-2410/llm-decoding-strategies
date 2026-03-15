@@ -189,3 +189,57 @@ Can we use **Inference Engineering** to rescue a model from **Mechanistic Failur
 
 ---
 *Created as part of an LLM experimentation lab setup to understand mechanistic interpretability and text generation pipelines.*
+
+### 10. [10_speculative_decoding_experiments.ipynb](10_speculative_decoding_experiments.ipynb)
+**Theory:**
+Speculative Decoding is an inference acceleration technique that uses a smaller, faster "draft" model to propose a sequence of tokens, which are then verified in parallel by a larger, more capable "target" model.
+
+The target model evaluates the draft tokens using Rejection Sampling. If the target model agrees with the draft model’s probabilities, the tokens are accepted, allowing multiple tokens to be generated in a single forward pass. If the target model disagrees, the sequence is truncated at the first rejected token, and the target model provides the correct token itself.
+
+**Important Takeaways:**
+- **Inference Acceleration:** A pristine draft model significantly speeds up inference because evaluating $K$ tokens in parallel on the target model takes almost the same time as evaluating 1 token.
+- **Target Model Shielding:** The target model acts as an absolute shield. Even if the draft model is severely corrupted and hallucinates, the final output text remains mathematically identical to what the target model would have produced alone.
+- **Speed Degradation as a Measure of Coherence:** As the draft model becomes noisier and starts suggesting bad tokens, the target model rejects them immediately. Generating draft tokens that always get rejected wastes computation, causing the overall tokens-per-second to plummet below the speed of running the target model alone.
+
+**Experiments Logs:**
+- **Experiment:** We measured the inference speed (tokens/sec) while physically corrupting the draft model by applying a bit-level shift to its `lm_head` weights.
+
+![Speculative Decoding Speed Degradation](speculative_decoding_speed.png)
+
+- **Experiment:** Visualizing the Acceptance Mechanism. We created a custom loop to observe the exact moment the target model accepts or rejects draft tokens.
+
+**Scenario A: Pristine Draft Model**
+```text
+1. DRAFTING PHASE (Small/Draft Model):
+   Proposed Token 1: " land" (ID: 4363)
+   Proposed Token 2: " humans" (ID: 12966)
+   Proposed Token 3: " on" (ID: 389)
+   Proposed Token 4: " the" (ID: 279)
+   Proposed Token 5: " Moon" (ID: 17781)
+
+2. VERIFICATION PHASE (Large/Target Model):
+   [ACCEPTED] Position 1! Target agreed on " land"
+   [ACCEPTED] Position 2! Target agreed on " humans"
+   [ACCEPTED] Position 3! Target agreed on " on"
+   [ACCEPTED] Position 4! Target agreed on " the"
+   [ACCEPTED] Position 5! Target agreed on " Moon"
+
+Resulting text chunk: " land humans on the Moon"
+```
+
+**Scenario B: Noisy Draft Model (Shift = 1000000)**
+```text
+Draft Model Corrupted with shift: 1000000
+First weight element verification: 0x50827458
+1. DRAFTING PHASE (Small/Draft Model):
+   Proposed Token 1: " land" (ID: 4363)
+   Proposed Token 2: " human" (ID: 3823)
+   Proposed Token 3: ".scalablytyped" (ID: 82000)
+   Proposed Token 4: " erotik" (ID: 28662)
+   Proposed Token 5: " vrou" (ID: 23259)
+
+2. VERIFICATION PHASE (Large/Target Model):
+   [ACCEPTED] Position 1! Target agreed on " land"
+   [REJECTED] Position 2! Draft said " human", Target wanted " humans"
+   -> Truncating remaining draft tokens...
+```
