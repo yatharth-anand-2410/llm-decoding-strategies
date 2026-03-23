@@ -17,22 +17,26 @@
 ## Summary of Findings
 - **Decoding as a Shield:** The choice of decoding algorithm is not just a stylistic preference; it is a vital layer of structural integrity that can filter out noise and improve model reliability.
 
-## Advanced Research Tracks (Pending)
+## Advanced Research Tracks (Pending / In Progress)
 
 ### 1. Speculative Decoding Experiments
-- **Scope:** Implement and evaluate Speculative Decoding in MLX to accelerate inference. This involves using a fast "draft" model to generate candidate tokens, which are then verified in parallel by the larger "target" model.
-- **Track A: Standard Speculative Decoding:**
-  - **Goal:** Pair the Llama 3 8B target model with a smaller/faster draft model (e.g., Llama 3 1B or a heavily quantized variant).
-  - **Metrics:** Measure the acceleration factor (tokens/sec), acceptance rate, and memory overhead of dual KV-cache management.
-- **Track B: "Noisy" Drafts (Cross-Project Integration):**
-  - **Goal:** Use a weight-corrupted version of Llama 3 8B (at the 1,000,001 shift mark) as a "Draft Model" for a clean target version.
-  - **Insight:** Measure the acceptance rate of "noisy" tokens to find the threshold where structural weight corruption destroys the draft model's utility.
+- **Status:** Completed.
+- **Scope:** Evaluated Speculative Decoding with corrupted draft models.
 
-### 2. Entropy-Triggered "Self-Healing"
+### 2. Min-P Sampling
+- **Goal:** Implement Min-P dynamic thresholding to test robustness against the Top-P "garbage magnet" effect at high temperatures and bit-level corruption.
+
+### 3. DoLa (Decoding by Contrasting Layers)
+- **Goal:** Contrast late "mature" layers with early "premature" layers to surface deeper factual recall and reduce hallucination.
+
+### 4. Entropy-Triggered "Self-Healing"
 - **Goal:** Monitor token entropy in real-time during generation.
-- **Experiment:** Automatically switch from Greedy to Contrastive/Beam search if entropy spikes (indicating confusion).
-- **Insight:** Can a model "notice" it's about to hallucinate and change its own strategy?
+- **Experiment:** Automatically switch from Greedy to Contrastive/Beam search if entropy spikes or drops to near-zero (indicating a loop).
+- **Insight:** Can a model "notice" it's failing and change its own strategy?
 
-### 3. Topological Mapping of the "Hallucination Well"
+### 5. Lookahead Decoding
+- **Goal:** Break the autoregressive bottleneck via Jacobi Iteration without relying on a separate draft model. Measure tokens/sec vs. Speculative Decoding.
+
+### 6. Topological Mapping of the "Hallucination Well"
 - **Goal:** Use high-temperature sampling on a corrupted model to generate 100+ responses.
 - **Insight:** Map whether errors are random noise or if the model falls into specific "attractors" (repetitive loops or specific multilingual garbage).

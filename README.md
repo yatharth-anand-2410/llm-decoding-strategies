@@ -243,3 +243,41 @@ First weight element verification: 0x50827458
    [REJECTED] Position 2! Draft said " human", Target wanted " humans"
    -> Truncating remaining draft tokens...
 ```
+
+### 11. [11_min_p_sampling.ipynb](11_min_p_sampling.ipynb)
+**Theory:**
+Min-P sampling sets a dynamic threshold based on the top token's probability. Instead of a fixed $K$ or a cumulative $P$, it only considers tokens that have at least `min_p` ratio of the highest probability.
+
+**Important Takeaways:**
+- **Dynamic Truncation:** Replaces Top-P as the modern coherence standard. It effectively truncates the "long tail" garbage that ruins Top-P at high temperatures or under weight corruption, without the rigid inflexibility of Top-K.
+
+**Experiments Logs:**
+- **Experiment:** Comparing Top-P (0.9) vs Min-P (0.05) on a corrupted Llama 3 8B model (Weight Surgery shift `1,000,003`).
+  - **Pool Size Reduction:** Under corruption, Top-P's sampling pool exploded to **128,256 tokens** (total collapse). Min-P successfully filtered this noise, restricting the pool to just **6 high-confidence tokens**.
+  - **SNR Improvement:** The probability of the top token ('if') was diluted to **22.7%** in Top-P due to noise. Min-P re-normalized the distribution, raising the top token's probability to **40.6%**.
+  - **Generation Stability:** 
+    - *Top-P Output:* `What is 2+2? vibrating вместjdeanoia complaintznikillo labelled...` (Chaotic multilingual collapse).
+    - *Min-P Output:* `What is 2+2? Pharma=temp)objectЛ974CompleteListener...` (Stable, although hallucinated due to surgery, it maintained structural integrity).
+- **Conclusion:** Min-P effectively "rescues" the signal from the noise by dynamically scaling its truncation threshold to the model's actual confidence, preventing the "Garbage Magnet" effect seen in Top-P.
+
+### 12. [12_dola_factuality.ipynb](12_dola_factuality.ipynb)
+**Theory:**
+DoLa (Decoding by Contrasting Layers) contrasts the logits of a final "mature" layer with an earlier "premature" layer to emphasize deeper factual recall.
+$$ P_{final}(x) - \lambda P_{premature}(x) $$
+
+**Experiments Logs:**
+- **Experiment:** We rerun factual prompts like `"The capital of France is"` and `"What is 2+2?"` to demonstrate how probability mass shifts away from surface-level hallucination toward factual accuracy.
+
+### 13. [13_entropy_self_healing.ipynb](13_entropy_self_healing.ipynb)
+**Theory:**
+Monitoring generation entropy $H = - \sum p(x) \log p(x)$ step-by-step. If entropy plummets unexpectedly, the model has fallen into a local loop. 
+
+**Experiments Logs:**
+- **Experiment:** Rerunning the Greedy Trap `"A cat is a cat is a"`. A trigger automatically detects the entropy crash ($H < 0.05$) and mathematically intervenes by switching to Contrastive Search, breaking the loop without requiring static presence penalties.
+
+### 14. [14_lookahead_decoding.ipynb](14_lookahead_decoding.ipynb)
+**Theory:**
+Breaks the autoregressive bottleneck directly via Jacobi Iteration, generating multiple parallel n-grams without needing a separate draft model.
+
+**Experiments Logs:**
+- **Experiment:** Speed comparison on `" land humans on the Moon"` and `"The spaceship landed on the alien planet and the crew"` against our Speculative Decoding benchmarks.
